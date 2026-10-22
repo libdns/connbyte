@@ -300,8 +300,9 @@ func fromLibdns(rec libdns.Record, zoneID string) (recordInput, error) {
 		return recordInput{}, fmt.Errorf("connbyte: record type %q is not supported", rr.Type)
 	}
 	name := rr.Name
-	if name == "@" {
-		name = ""
+	if name == "" {
+		// The API rejects an empty name and uses "@" for the zone apex.
+		name = "@"
 	}
 	in := recordInput{
 		ZoneID:  zoneID,
