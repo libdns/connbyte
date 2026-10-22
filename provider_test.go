@@ -77,8 +77,12 @@ func (f *fakeAPI) serve(w http.ResponseWriter, r *http.Request) {
 		f.reply(w, 200, out, nil)
 	case "/ns/record/create":
 		name, _ := body["name"].(string)
+		if name == "" {
+			f.reply(w, 400, nil, []map[string]string{{"name": "Field must not be empty."}})
+			return
+		}
 		fqdn := f.zones[zoneID]
-		if name != "" {
+		if name != "@" {
 			fqdn = name + "." + fqdn
 		}
 		content, _ := body["content"].(string)
@@ -257,6 +261,30 @@ func TestMXPriorityRoundTrip(t *testing.T) {
 	}
 	if mx.Preference != 10 || mx.Target != "mail.example.com." || mx.Name != "@" {
 		t.Fatalf("unexpected MX %+v", mx)
+	}
+}
+
+func TestZoneApexNameIsAt(t *testing.T) {
+	ctx := context.Background()
+	f, p := newFakeAPI(t)
+
+	for _, name := range []string{"@", ""} {
+		if _, err := p.AppendRecords(ctx, "sub.example.com.", []libdns.Record{
+			libdns.TXT{Name: name, Text: "apex-" + name, TTL: 2 * time.Minute},
+		}); err != nil {
+			t.Fatalf("name %q: %v", name, err)
+		}
+	}
+	for _, rec := range f.records["01ZONEB"] {
+		if rec.Name != "sub.example.com" {
+			t.Fatalf("apex record stored as %q", rec.Name)
+		}
+	}
+	deleted, err := p.DeleteRecords(ctx, "sub.example.com.", []libdns.Record{
+		libdns.TXT{Name: "@", Text: "apex-@"},
+	})
+	if err != nil || len(deleted) != 1 || len(f.records["01ZONEB"]) != 1 {
+		t.Fatalf("delete apex: deleted=%v err=%v left=%v", deleted, err, f.records["01ZONEB"])
 	}
 }
 
